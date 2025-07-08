@@ -23,6 +23,12 @@ struct PaymentSummaryResponse: Content {
     let fallback: ProcessorSummary
 }
 
+// PHASE 2D: Simple summary response for consistency
+struct PaymentsSummaryResponse: Content {
+    let defaultProcessorPayments: Int
+    let fallbackProcessorPayments: Int
+}
+
 struct ProcessorSummary: Content {
     let totalRequests: Int
     let totalAmount: Double

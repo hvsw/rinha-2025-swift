@@ -5,4 +5,14 @@ func routes(_ app: Application) throws {
     app.get("health") { req async in
         return ["status": "ok"]
     }
+    
+    // PHASE 2D: Register payment routes using RouteCollection
+    let paymentService = PaymentService(app: app)
+    let paymentController = PaymentController(paymentService: paymentService)
+    
+    // Register the payment controller routes
+    try app.register(collection: paymentController)
+    
+    // PHASE 2D: Additional route for payments-summary (different from getPaymentsSummary)
+    app.get("payments-summary", use: paymentController.paymentsSummary)
 }
