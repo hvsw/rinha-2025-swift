@@ -220,13 +220,13 @@ actor PaymentService {
         retryAttempts.removeValue(forKey: request.correlationId)
     }
     
-    // PHASE 2B: Summary with consistency guarantee - FIXED VERSION
+    // PHASE 2C: Summary with TRUE consistency - report only SENT payments
     func getPaymentsSummary(from: Date?, to: Date?) async -> PaymentSummaryResponse {
-        // CRITICAL FIX: Use ACCEPTED payments, not just processed ones
-        // If we returned HTTP 202, we must report it in the summary
-        // This ensures consistency with what K6 considers "successful"
+        // CRITICAL FIX: Use PROCESSED payments (actually sent to processors)
+        // This matches exactly what payment processors received
+        // Accepter ≠ Enviado - só reportamos o que realmente enviamos
         
-        let filteredPayments = acceptedPayments.filter { payment in
+        let filteredPayments = processedPayments.filter { payment in
             if let from = from, payment.requestedAt < from {
                 return false
             }
