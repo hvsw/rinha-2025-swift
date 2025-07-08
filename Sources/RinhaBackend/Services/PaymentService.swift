@@ -7,12 +7,13 @@ actor PaymentService {
     private let defaultProcessorURL: String
     private let fallbackProcessorURL: String
     
-    // In-memory storage for processed payments
-    private var processedPayments: [PaymentRecord] = []
+    // PHASE 2: Separate tracking for accepted vs processed payments
+    private var acceptedPayments: [PaymentRecord] = []  // All payments we accepted (HTTP 202)
+    private var processedPayments: [PaymentRecord] = []  // Only payments successfully sent to processors
     private var lastHealthCheck: [ProcessorType: (date: Date, health: HealthCheckResponse)] = [:]
     private let healthCheckInterval: TimeInterval = 5.0 // 5 seconds limit
     
-    // Async processing queue and state tracking
+    // PHASE 2: Enhanced queue management with optimized performance
     private var pendingPayments: [PaymentProcessorRequest] = []
     private var processingPayments: Set<UUID> = []
     private var isProcessingQueue: Bool = false
@@ -22,7 +23,7 @@ actor PaymentService {
         self.defaultProcessorURL = Environment.get("PAYMENT_PROCESSOR_URL_DEFAULT") ?? "http://payment-processor-default:8080"
         self.fallbackProcessorURL = Environment.get("PAYMENT_PROCESSOR_URL_FALLBACK") ?? "http://payment-processor-fallback:8080"
         
-        // Start background queue processor
+        // Start background queue processor with optimized performance
         Task {
             await startQueueProcessor()
         }
@@ -35,7 +36,17 @@ actor PaymentService {
             requestedAt: Date()
         )
         
-        // Add to queue and return immediately
+        // PHASE 2: Track as accepted immediately when we return HTTP 202
+        let acceptedRecord = PaymentRecord(
+            correlationId: request.correlationId,
+            amount: request.amount,
+            requestedAt: Date(),
+            processor: .default,  // Will be updated when actually processed
+            processedAt: nil  // Will be set when actually processed
+        )
+        acceptedPayments.append(acceptedRecord)
+        
+        // Add to queue for processing
         await enqueuePayment(processorRequest)
         
         // Return 202 Accepted for async processing
@@ -53,25 +64,27 @@ actor PaymentService {
         }
     }
     
+    // PHASE 2: Optimized queue processor - restored performance focus
     private func startQueueProcessor() async {
-        // Background task that continuously processes the queue
         while true {
             if !pendingPayments.isEmpty && !isProcessingQueue {
                 await processQueue()
             }
             
-            // Small delay to prevent busy loop
-            try? await Task.sleep(nanoseconds: 10_000_000) // 10ms
+            // PHASE 2: Optimized delay for maximum throughput
+            try? await Task.sleep(nanoseconds: 2_000_000) // 2ms - fast but not cpu-intensive
         }
     }
     
+    // PHASE 2: Optimized queue processing with consistent batch sizes
     private func processQueue() async {
         guard !isProcessingQueue else { return }
         isProcessingQueue = true
         
         defer { isProcessingQueue = false }
         
-        let maxBatchSize = 10 // Process up to 10 payments at once
+        // PHASE 2: Consistent batch size optimized for throughput
+        let maxBatchSize = 20  // Optimal batch size for performance
         let batchSize = min(pendingPayments.count, maxBatchSize)
         
         guard batchSize > 0 else { return }
@@ -79,7 +92,7 @@ actor PaymentService {
         let batch = Array(pendingPayments.prefix(batchSize))
         pendingPayments.removeFirst(batchSize)
         
-        // Process batch concurrently
+        // Process batch concurrently with high concurrency
         await withTaskGroup(of: Void.self) { group in
             for payment in batch {
                 group.addTask {
@@ -98,26 +111,27 @@ actor PaymentService {
         
         // Try default processor first
         if await tryProcessWithProcessor(.default, request: request) != nil {
-            await recordPayment(request: request, processor: .default)
+            await recordProcessedPayment(request: request, processor: .default)
             return
         }
         
         // Fallback to fallback processor
         if await tryProcessWithProcessor(.fallback, request: request) != nil {
-            await recordPayment(request: request, processor: .fallback)
+            await recordProcessedPayment(request: request, processor: .fallback)
             return
         }
         
-        // If both fail, re-queue with exponential backoff
+        // If both fail, re-queue with quick retry
         await requeueWithBackoff(request)
     }
     
     private func requeueWithBackoff(_ request: PaymentProcessorRequest) async {
-        // Simple exponential backoff: wait and re-add to queue
-        try? await Task.sleep(nanoseconds: 100_000_000) // 100ms delay
+        // PHASE 2: Quick retry for better throughput
+        try? await Task.sleep(nanoseconds: 25_000_000) // 25ms delay
         pendingPayments.append(request)
     }
     
+    // PHASE 2: Optimized HTTP client with balanced timeout
     private func tryProcessWithProcessor(_ processor: ProcessorType, request: PaymentProcessorRequest) async -> PaymentProcessorResponse? {
         let url = processor == .default ? defaultProcessorURL : fallbackProcessorURL
         
@@ -125,8 +139,8 @@ actor PaymentService {
             let uri = URI(string: "\(url)/payments")
             let response = try await app.client.post(uri) { req in
                 try req.content.encode(request)
-                // Set shorter timeout for async processing
-                req.timeout = .seconds(5)
+                // PHASE 2: Balanced timeout for reliability and performance
+                req.timeout = .seconds(4)  // Balanced between 3s and 5s
             }
             
             if response.status.code >= 200 && response.status.code < 300 {
@@ -139,7 +153,8 @@ actor PaymentService {
         return nil
     }
     
-    private func recordPayment(request: PaymentProcessorRequest, processor: ProcessorType) async {
+    // PHASE 2: Separate method for recording actually processed payments
+    private func recordProcessedPayment(request: PaymentProcessorRequest, processor: ProcessorType) async {
         let record = PaymentRecord(
             correlationId: request.correlationId,
             amount: request.amount,
@@ -148,9 +163,17 @@ actor PaymentService {
             processedAt: Date()
         )
         processedPayments.append(record)
+        
+        // Update the accepted payment record with actual processor used
+        if let index = acceptedPayments.firstIndex(where: { $0.correlationId == request.correlationId }) {
+            acceptedPayments[index].processor = processor
+            acceptedPayments[index].processedAt = Date()
+        }
     }
     
+    // PHASE 2: Lightweight summary without aggressive queue flushing
     func getPaymentsSummary(from: Date?, to: Date?) async -> PaymentSummaryResponse {
+        // PHASE 2: Use PROCESSED payments only for consistency (no blocking flush)
         let filteredPayments = processedPayments.filter { payment in
             if let from = from, payment.requestedAt < from {
                 return false
@@ -207,12 +230,20 @@ actor PaymentService {
         return nil
     }
     
-    // Debug methods for monitoring queue state
-    func getQueueStats() async -> (pending: Int, processing: Int, processed: Int) {
-        return (
+    // MARK: - Queue Statistics (for testing and debugging)
+    
+    func getQueueStats() async -> QueueStats {
+        return QueueStats(
             pending: pendingPayments.count,
-            processing: processingPayments.count,
+            processing: isProcessingQueue ? 1 : 0,
+            accepted: acceptedPayments.count,
             processed: processedPayments.count
         )
+    }
+    
+    // Get queue status for health monitoring
+    func getQueueStatus() async -> String {
+        let stats = await getQueueStats()
+        return "Pending: \(stats.pending), Processed: \(stats.processed), Processing: \(stats.processing > 0 ? "YES" : "NO")"
     }
 } 

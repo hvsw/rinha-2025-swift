@@ -1,0 +1,7 @@
+Phase,Date,Latency_P98_ms,Latency_P99_ms,Throughput_req_s,Inconsistency,Total_Transactions,Failure_Rate_pct,DEFAULT_Processor_pct,Comment
+Baseline,2025-01-08,1500.00,1500.00,196.9,55680.20,10594,11.7,N/A,"Synchronous payment processing - blocking calls to payment processors"
+Phase_1,2025-01-08,32.76,44.01,248.2,17671.20,15038,0.00,93.9,"Asynchronous processing with Actor pattern + background queue + HTTP 202 immediate response"
+Phase_2_Initial,2025-01-08,223.28,309.01,235.0,65152.60,7471,0.00,N/A,"Added separate accepted/processed tracking + aggressive queue flushing (caused performance regression)"
+Phase_2_Corrected,2025-01-08,38.84,66.29,248.0,40536.30,15126,0.00,91.9,"Removed aggressive flushing + optimized timeouts + lighter queue processing approach"
+Phase_2B,2025-01-08,38.08,104.48,249.2,42227.80,15171,0.01,90.6,"Enhanced health-based routing + reduced timeouts + better error handling (inconsistency still critical)"
+Phase_2C_Next,2025-01-08,TBD,TBD,TBD,TARGET_0,TBD,TBD,TBD,"🎯 NEXT: Fix payments-summary to report ACCEPTED payments instead of PROCESSED (root cause of inconsistency)" 

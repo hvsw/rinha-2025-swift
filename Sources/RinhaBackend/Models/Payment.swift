@@ -38,8 +38,8 @@ struct PaymentRecord {
     let correlationId: UUID
     let amount: Double
     let requestedAt: Date
-    let processor: ProcessorType
-    let processedAt: Date
+    var processor: ProcessorType
+    var processedAt: Date?
 }
 
 enum ProcessorType: String, CaseIterable {
