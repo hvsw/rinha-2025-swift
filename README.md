@@ -206,20 +206,18 @@ jq --sort-keys . results-summary.json > results-summary-sorted.json
 mv results-summary-sorted.json results-summary.json
 cp results-summary.json ../swift/RinhaBackend/
 
-# Or use this one-liner:
-k6 run rinha.js --summary-export=results-summary.json && \
-jq --sort-keys . results-summary.json > ../swift/RinhaBackend/results-summary.json
+# Why jq --sort-keys?
+# - K6 generates JSON with inconsistent field ordering
+# - jq --sort-keys ensures consistent field order
+# - This makes git diffs show ONLY actual value changes
+# - Much cleaner tracking of performance improvements
 ```
 
-**🎯 Why Use `jq --sort-keys`:**
-- Ensures consistent JSON field ordering across test runs
-- Makes `git diff` show only actual value changes, not field reordering
-- Clean, readable diffs that highlight performance improvements
-
-**📈 Performance Evolution Tracking:**
-- `results-summary.json` is updated after each major optimization phase
-- Use `git diff` to see performance improvements between commits
-- Historical data preserved in git history for performance analysis
+**📊 For Performance Tracking:**
+- Always use `--summary-export=results-summary.json` to track improvements
+- **IMPORTANT**: Use `jq --sort-keys` to organize JSON fields consistently
+- Copy the organized file to the project directory
+- This enables clean git diffs showing only performance value changes
 
 ### K6 Dashboard and Reports
 
@@ -260,6 +258,11 @@ These files can be committed to the repository as performance benchmarks and his
 - `report.html` - Interactive dashboard report (~170KB)  
 - `results-summary.json` - **Latest test metrics** with detailed performance data (~3KB)
 - `results-fase1.json` - Phase 1 summary for reference (~300B)
+
+**📈 Performance Evolution Tracking:**
+- `results-summary.json` is updated after each major optimization phase
+- Use `git diff` to see performance improvements between commits
+- Historical data preserved in git history for performance analysis
 
 ## Resource Allocation
 
