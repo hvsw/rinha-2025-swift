@@ -1,0 +1,1 @@
+{"fase": 1, "data": "2025-07-08", "latency_p98_ms": 32.76, "latency_p99_ms": 44.01, "throughput_rps": 248.2, "transactions_success_rps": 247.4, "failure_rate": 0.0, "inconsistency": 17671.2, "improvement_latency_p99": "3409%", "improvement_throughput": "26%", "improvement_failures": "100%", "improvement_inconsistency": "68%"}

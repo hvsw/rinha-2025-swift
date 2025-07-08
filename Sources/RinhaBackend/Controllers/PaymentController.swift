@@ -24,10 +24,11 @@ struct PaymentController: RouteCollection {
             throw Abort(.badRequest, reason: "Amount must be greater than 0")
         }
         
+        // Process payment asynchronously - always returns .accepted
         let status = try await paymentService.processPayment(request: paymentRequest)
         
         let response = Response(status: status)
-        try response.content.encode(["message": "Payment received"])
+        try response.content.encode(["message": "Payment accepted for processing"])
         return response
     }
     
