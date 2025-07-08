@@ -45,4 +45,12 @@ struct PaymentRecord {
 enum ProcessorType: String, CaseIterable {
     case `default` = "default"
     case fallback = "fallback"
+}
+
+// MARK: - Queue Statistics
+struct QueueStats: Equatable {
+    let pending: Int       // Payments in queue waiting to be processed
+    let processing: Int    // Currently being processed (0 or 1)
+    let accepted: Int      // Total payments accepted (HTTP 202)
+    let processed: Int     // Total payments processed by processors
 } 
