@@ -39,21 +39,8 @@ struct PaymentController: RouteCollection {
         return await paymentService.getPaymentsSummary(from: from, to: to)
     }
     
-    // PHASE 2C: Report only processed payments (sent to processors) for consistency
-    func paymentsSummary(req: Request) async throws -> PaymentsSummaryResponse {
-        // PHASE 2D: Final queue flush for zero inconsistency
-        await paymentService.flushQueueCompletely()
-        
-        let processedPayments = await paymentService.getProcessedPayments()
-        
-        let defaultPayments = processedPayments.filter { $0.processor == .default }
-        let fallbackPayments = processedPayments.filter { $0.processor == .fallback }
-        
-        return PaymentsSummaryResponse(
-            defaultProcessorPayments: defaultPayments.count,
-            fallbackProcessorPayments: fallbackPayments.count
-        )
-    }
+    // PHASE 3B: Removed old paymentsSummary method to avoid conflicts
+    // Only using getPaymentsSummary for k6 compatibility
     
     private func dateFromString(_ string: String) -> Date? {
         let formatter = DateFormatter()

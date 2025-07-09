@@ -208,8 +208,8 @@ actor PaymentService {
             date: Date(),
             health: HealthCheckResponse(failing: true, minResponseTime: 9999)
         )
-    }
-
+        }
+        
     // PHASE 2D: Enhanced payment recording with consistency tracking
     private func recordProcessedPayment(request: PaymentProcessorRequest, processor: ProcessorType) async {
         let record = PaymentRecord(
@@ -265,7 +265,7 @@ actor PaymentService {
             fallback: fallbackSummary
         )
     }
-
+    
     // PHASE 2C: Final queue flush for zero inconsistency
     func flushQueueCompletely() async {
         var attempts = 0
