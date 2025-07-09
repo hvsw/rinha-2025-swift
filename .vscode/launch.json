@@ -1,0 +1,22 @@
+{
+    "configurations": [
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:RinhaBackend}",
+            "name": "Debug RinhaBackend",
+            "program": "${workspaceFolder:RinhaBackend}/.build/debug/RinhaBackend",
+            "preLaunchTask": "swift: Build Debug RinhaBackend"
+        },
+        {
+            "type": "swift",
+            "request": "launch",
+            "args": [],
+            "cwd": "${workspaceFolder:RinhaBackend}",
+            "name": "Release RinhaBackend",
+            "program": "${workspaceFolder:RinhaBackend}/.build/release/RinhaBackend",
+            "preLaunchTask": "swift: Build Release RinhaBackend"
+        }
+    ]
+}
