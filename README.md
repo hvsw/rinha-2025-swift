@@ -255,7 +255,7 @@ k6 run rinha.js \
 These files can be committed to the repository as performance benchmarks and historical reference.
 
 **Saved Test Results (Reference):**
-- `report.html` - Interactive dashboard report (~170KB)  
+- `report.html` - Interactive dashboard report (~170KB)
 - `results-summary.json` - **Latest test metrics** with detailed performance data (~3KB)
 - `results-fase1.json` - Phase 1 summary for reference (~300B)
 
