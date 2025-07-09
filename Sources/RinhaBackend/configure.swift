@@ -6,13 +6,12 @@ public func configure(_ app: Application) async throws {
     app.http.server.configuration.port = 9999
     app.http.server.configuration.hostname = "0.0.0.0"
     
+    // Configure HTTP client for external requests
+    app.clients.use(.http)
+    
     // Create payment service
     let paymentService = PaymentService(app: app)
     
-    // Create and register payment controller
-    let paymentController = PaymentController(paymentService: paymentService)
-    
-    // register routes
-    try app.register(collection: paymentController)
+    // register routes (PaymentController will be created inside routes function)
     try routes(app)
 }
