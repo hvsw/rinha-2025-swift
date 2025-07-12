@@ -10,4 +10,5 @@ Phase2E,44595.9,262.94,304.31,246.6,1,90.6,Balanced approach - worse than 2C in 
 Phase2C_Final,36357.3,86.67,168.31,247.0,1,91.6,Reverted to proven Phase 2C settings - excellent balance
 Phase3A,TBD,TBD,TBD,307.8,0,91.6,Nginx ultra-optimized - 25% throughput improvement over Phase2C
 Phase3B,0,192.63,223.69,246.4,0.00,TBD,Resource redistribution + k6 format fix - official test results
-Phase3C-Fixed,52655.4,TBD,52.13,249.71,0.00,86.5,Fixed requestedAt field - WORKING! Ultra-aggressive processing successful
+Phase3C-Fixed,52655.4,TBD,52.13,249.71,0.00,86.5,Fixed requestedAt field - WORKING! Ultra-aggressive processing successfulPhase4A,37829.9,TBD,191.53,245.25,0.00,TBD,Nginx optimized: auto workers + 500k files + keepalive 200 + buffering off - 28% inconsistency reduction
+Phase4B,29133.6,TBD,84.34,246.78,0.00,TBD,Nginx Phase 4B: keepalive 150 + timeouts 3s/12s/12s + buffering on - SUCESSO TOTAL! +8.9% Liquid Amount e -56% latency
