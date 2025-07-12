@@ -10,7 +10,7 @@ struct PaymentRequest: Content {
 struct PaymentProcessorRequest: Content {
     let correlationId: UUID
     let amount: Double
-    let requestedAt: Date
+    // Note: requestedAt is NOT sent to processors - they don't accept it
 }
 
 // MARK: - Response Models
