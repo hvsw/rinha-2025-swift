@@ -1,7 +1,18 @@
 # 🏆 RINHA DE BACKEND 2025 - LEADERBOARD
 
+## ⚠️ **IMPORTANTE: LIMITAÇÕES DO AMBIENTE DE TESTE**
+**🔴 AVISO:** Nossos resultados são executados em **macOS (Darwin)** enquanto os resultados oficiais dos outros participantes são executados em **Linux ARM64** pelo organizador. Embora Docker ofereça alguma padronização, diferenças significativas de performance podem existir entre:
+- Docker Desktop (Mac) vs Docker nativo (Linux)
+- Kernel, network stack, scheduler e I/O differences
+- Potenciais variações ARM64 Mac vs ARM64 Linux
+
+**📊 INTERPRETAÇÃO:** Esta análise deve ser vista como **indicativa** da performance relativa, não como comparação absoluta. As otimizações e tendências geralmente se traduzem entre ambientes, mas os números específicos podem variar no ambiente oficial.
+
+---
+
 ## 📊 **TABELA COMPARATIVA DETALHADA**
 *Última atualização: 2025-01-12*
+*⚠️ Resultados swift-vapor executados em macOS - outros em Linux ARM64*
 
 ### **🏆 RANKING GERAL**
 | Pos | Participante | Tecnologia | 💰 Liquid Amount | ⚡ P99 Latency | ✅ Sucesso | 💥 Falhas | 📈 Req/s |
@@ -117,8 +128,30 @@
 
 ---
 
+## 🔧 **ESTRATÉGIAS PARA MITIGAR LIMITAÇÕES DO AMBIENTE**
+
+### **✅ O QUE PODEMOS FAZER:**
+1. **Focar em otimizações universais:** Algoritmos, estruturas de dados, arquitetura
+2. **Testar em Linux ARM64:** Usar GitHub Actions, Docker containers, ou VMs
+3. **Benchmarks relativos:** Comparar versões entre si, não valores absolutos
+4. **Otimizações conservadoras:** Priorizamos mudanças que funcionam bem em qualquer ambiente
+
+### **📊 CONFIABILIDADE DAS ANÁLISES:**
+- **✅ Tendências:** Muito confiáveis (melhor/pior performance)
+- **✅ Otimizações:** Geralmente se traduzem entre ambientes
+- **⚠️ Números absolutos:** Podem variar significativamente
+- **❌ Comparações diretas:** Devem ser interpretadas com cautela
+
+### **🎯 FOCO ESTRATÉGICO:**
+- **Prioridade:** Otimizações de arquitetura e algoritmos
+- **Secundário:** Tuning fino de configurações
+- **Validação:** Testar em ambiente similar ao oficial quando possível
+
+---
+
 **🎉 SUBIMOS PARA O 2º LUGAR DA RINHA DE BACKEND 2025!**
 **🦄 Swift + Vapor competindo de igual para igual com Go!**
 **🏆 CAMPEÃO EM EFICIÊNCIA + MELHOR P99 LATENCY QUE O LÍDER!**
 **🎯 POTENCIAL CLARO PARA O 1º LUGAR COM AUMENTO DE VOLUME!**
+**⚠️ RESULTADOS LOCAIS - VALIDAÇÃO OFICIAL PENDENTE**
  
