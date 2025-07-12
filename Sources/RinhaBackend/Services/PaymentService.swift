@@ -41,7 +41,9 @@ actor PaymentService {
     func processPayment(request: PaymentRequest) async throws -> HTTPStatus {
         let processorRequest = PaymentProcessorRequest(
             correlationId: request.correlationId,
-            amount: request.amount
+            amount: request.amount,
+            // TODO: Reuse ISO8601DateFormatter instance for performance instead of creating new one each time
+            requestedAt: ISO8601DateFormatter().string(from: Date())
         )
         
         // PHASE 2B: Track as accepted immediately when we return HTTP 202
