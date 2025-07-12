@@ -1,0 +1,118 @@
+{
+    "metrics": {
+        "transactions_failure": {
+            "count": 0,
+            "rate": 0
+        },
+        "fallback_total_requests": {
+            "count": 1944,
+            "rate": 31.844986990487374
+        },
+        "http_req_failed": {
+            "passes": 1,
+            "fails": 15229,
+            "value": 0.00006565988181221274
+        },
+        "transactions_success": {
+            "count": 15180,
+            "rate": 248.66610211707734
+        },
+        "http_req_duration": {
+            "p(99)": 47.11986999999999,
+            "count": 15230
+        },
+        "balance_inconsistency_amount": {
+            "count": 65948.60000000101,
+            "rate": 1080.3149737864649
+        },
+        "iteration_duration": {
+            "p(99)": 1048.38839628,
+            "count": 15192
+        },
+        "default_total_amount": {
+            "rate": 6792.227759149422,
+            "count": 414636.4000001243
+        },
+        "http_reqs": {
+            "count": 15230,
+            "rate": 249.48516042444584
+        },
+        "http_req_duration{expected_response:true}": {
+            "p(99)": 47.12083999999999,
+            "count": 15229
+        },
+        "http_req_waiting": {
+            "p(99)": 47.09225999999998,
+            "count": 15230
+        },
+        "data_sent": {
+            "rate": 50133.57612405719,
+            "count": 3060440
+        },
+        "fallback_total_fee": {
+            "count": 5802.840000000212,
+            "rate": 95.05728616660829
+        },
+        "http_req_connecting": {
+            "p(99)": 0.326,
+            "count": 15230
+        },
+        "vus": {
+            "value": 91,
+            "min": 8,
+            "max": 499
+        },
+        "http_req_sending": {
+            "p(99)": 0.08170999999999987,
+            "count": 15230
+        },
+        "fallback_total_amount": {
+            "count": 38685.60000000142,
+            "rate": 633.715241110722
+        },
+        "total_transactions_amount": {
+            "count": 453322.0000001257,
+            "rate": 7425.943000260145
+        },
+        "default_total_requests": {
+            "count": 20836,
+            "rate": 341.31797784660233
+        },
+        "http_req_receiving": {
+            "count": 15230,
+            "p(99)": 0.138
+        },
+        "data_received": {
+            "count": 3350485,
+            "rate": 54884.851459271136
+        },
+        "vus_max": {
+            "min": 504,
+            "max": 504,
+            "value": 504
+        },
+        "default_total_fee": {
+            "count": 20731.820000006217,
+            "rate": 339.61138795747115
+        },
+        "http_req_tls_handshaking": {
+            "count": 15230,
+            "p(99)": 0
+        },
+        "iterations": {
+            "count": 15192,
+            "rate": 248.86267611084577
+        },
+        "http_req_blocked": {
+            "p(99)": 0.3957099999999999,
+            "count": 15230
+        }
+    },
+    "root_group": {
+        "name": "",
+        "path": "",
+        "id": "d41d8cd98f00b204e9800998ecf8427e",
+        "groups": {},
+        "checks": {}
+    }
+}
