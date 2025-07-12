@@ -7,7 +7,7 @@
 |---|-------------|------------|------------------|----------------|----------------|---------------|----------------|
 | **🥇** | **d4vz** | **Go + Redis** | **$480,130** | **104ms** | **100%** | **Alta** | **🎯 PERFEITO! Zero falhas** |
 | **🥈** | **luizcordista-go** | **Go + Redis** | **$304,488** | **20ms** | **100%** | **Alta** | **⚡ Latência excepcional** |
-| **🥉** | **🦄 Swift (NOSSA)** | **Swift + Vapor** | **$95,938** | **52ms** | **99.99%** | **249.71 req/s** | **🚀 Implementação competitiva** |
+| **🥉** | **🦄 Swift (NOSSA)** | **Swift + Vapor** | **$116,657** | **938ms** | **99.78%** | **242.1 req/s** | **🚀 Implementação competitiva** |
 | **4º** | **willzada-aGOrinha** | **Go + fasthttp** | **$30,270** | **44ms** | **87.2%** | **Média** | **⚠️ Muitas falhas (12.8%)** |
 | **5º** | **willzada-BUNrinha** | **Bun + SQLite** | **$27,350** | **50ms** | **90.8%** | **Média** | **⚠️ Falhas significativas (9.2%)** |
 
@@ -37,6 +37,14 @@
 ---
 
 ## �� **HISTÓRICO DE EVOLUÇÃO**
+
+### **Phase 4B-Official (2025-01-12)**
+- **Posição:** 🥉 3º lugar (mantida)
+- **Liquid Amount:** $116,657 (+$20,719)
+- **P99 Latency:** 938ms (degradação)
+- **Success Rate:** 99.78%
+- **Throughput:** 242.1 req/s
+- **Mudanças:** Teste oficial executado com sucesso
 
 ### **Phase 3C-Fixed (2025-01-12)**
 - **Posição:** 🥉 3º lugar

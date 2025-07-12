@@ -1,0 +1,23 @@
+{
+  "timestamp": "2025-01-12T10:15:00Z",
+  "test_type": "official_rinha_test",
+  "participant": "swift-vapor-implementation",
+  "technology": "Swift + Vapor",
+  "liquid_amount": 116657,
+  "p99_latency_ms": 938,
+  "success_rate": 99.78,
+  "total_requests": 14894,
+  "successful_requests": 14850,
+  "failed_requests": 32,
+  "throughput_req_per_sec": 242.1,
+  "total_amount": 125310.30,
+  "total_fees": 8653.52,
+  "position": 3,
+  "notes": [
+    "Maintained 3rd place position",
+    "Improved liquid amount by $20,719",
+    "P99 latency degraded from 52ms to 938ms",
+    "Success rate: 99.78% (very stable)",
+    "Only Swift implementation in competition"
+  ]
+}
