@@ -2,7 +2,7 @@
 
 This is a Swift implementation using the Vapor framework for the Rinha de Backend 2025 challenge.
 
-![Results Screenshot](results.png)
+![Results Screenshot](results/results.png)
 
 
 ## Architecture
