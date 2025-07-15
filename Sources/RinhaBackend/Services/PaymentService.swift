@@ -7,33 +7,29 @@ actor PaymentService {
     private let defaultProcessorURL: String
     private let fallbackProcessorURL: String
     
-    // PHASE 2D: Final consistency push - zero inconsistency target
-    private var acceptedPayments: [PaymentRecord] = []  // All payments we accepted (HTTP 202)
-    private var processedPayments: [PaymentRecord] = []  // Only payments successfully sent to processors
+    // Payment tracking
+    private var acceptedPayments: [PaymentRecord] = []
+    private var processedPayments: [PaymentRecord] = []
     private var lastHealthCheck: [ProcessorType: (date: Date, health: HealthCheckResponse)] = [:]
     private var isProcessingQueue = false
     private var retryAttempts: [UUID: Int] = [:]
-    
-    // PHASE 2D: Queue management
     private var pendingPayments: [PaymentProcessorRequest] = []
-    private var processingPayments: Set<UUID> = []
     
-    // PHASE 3C: Ultra-aggressive processing for maximum volume
-    private let maxRetryAttempts = 8         // Reduced for faster processing
-    private let batchSize = 50               // 2.5x larger batches for higher volume
-    private let processingDelay: UInt64 = 500_000  // 0.5ms - 4x faster processing
-    private let timeoutDuration: TimeInterval = 3.0  // 3s - faster timeout
-    private let healthCheckInterval: TimeInterval = 5.0  // 5s - more frequent health checks
+    // Configuration
+    private let maxRetryAttempts = 8
+    private let batchSize = 50
+    private let processingDelay: UInt64 = 500_000  // 0.5ms
+    private let healthCheckInterval: TimeInterval = 5.0
     
     init(app: Application) {
         self.app = app
         self.defaultProcessorURL = Environment.get("DEFAULT_PROCESSOR_URL") ?? "http://payment-processor-default:8080"
         self.fallbackProcessorURL = Environment.get("FALLBACK_PROCESSOR_URL") ?? "http://payment-processor-fallback:8080"
         
-        // Start Phase 3C: Multiple concurrent workers for maximum volume
+        // Start concurrent workers for high volume processing
         for workerID in 0..<8 {
             Task {
-                await startUltraAggressiveWorker(workerID: workerID)
+                await startWorker(workerID: workerID)
             }
         }
     }
@@ -42,72 +38,49 @@ actor PaymentService {
         let processorRequest = PaymentProcessorRequest(
             correlationId: request.correlationId,
             amount: request.amount,
-            // TODO: Reuse ISO8601DateFormatter instance for performance instead of creating new one each time
             requestedAt: ISO8601DateFormatter().string(from: Date())
         )
         
-        // PHASE 2B: Track as accepted immediately when we return HTTP 202
+        // Track as accepted immediately when we return HTTP 202
         let acceptedRecord = PaymentRecord(
             correlationId: request.correlationId,
             amount: request.amount,
             requestedAt: Date(),
-            processor: .default,  // Will be updated when actually processed
-            processedAt: nil  // Will be set when actually processed
+            processor: .default,
+            processedAt: nil
         )
         acceptedPayments.append(acceptedRecord)
         
-        // Add to queue for processing
         await enqueuePayment(processorRequest)
-        
-        // Return 202 Accepted for async processing
         return .accepted
     }
     
     private func enqueuePayment(_ request: PaymentProcessorRequest) async {
         pendingPayments.append(request)
-        retryAttempts[request.correlationId] = 0  // Initialize retry count
+        retryAttempts[request.correlationId] = 0
         print("💰 Payment enqueued: \(request.correlationId), total in queue: \(pendingPayments.count)")
-        
-        // PHASE 2D: The ultra-aggressive processor is already running in background
-        // No need to start additional processing - it will pick up the new payment
     }
     
-    // PHASE 3C: Ultra-aggressive worker for maximum volume
-    private func startUltraAggressiveWorker(workerID: Int) async {
+    private func startWorker(workerID: Int) async {
         print("🚀 Worker \(workerID) started")
         while true {
             if !pendingPayments.isEmpty && !isProcessingQueue {
                 print("📦 Worker \(workerID) processing \(pendingPayments.count) payments")
-                await processQueueUltraAggressive()
+                await processQueue()
             }
             
-            // Phase 3C: Ultra-fast polling for maximum throughput
             try? await Task.sleep(nanoseconds: processingDelay)
         }
     }
     
-    // PHASE 2C: Proven queue processor - optimal performance (kept for reference)
-    private func startProvenProcessor() async {
-        while true {
-            if !pendingPayments.isEmpty && !isProcessingQueue {
-                await processQueueProven()
-            }
-            
-            // Phase 2C proven polling interval
-            try? await Task.sleep(nanoseconds: processingDelay)
-        }
-    }
-    
-    // PHASE 3C: Ultra-aggressive queue processing for maximum volume
-    private func processQueueUltraAggressive() async {
+    private func processQueue() async {
         guard !isProcessingQueue else { return }
         isProcessingQueue = true
         defer { isProcessingQueue = false }
         
-        // Process in Phase 3C ultra-aggressive batch size
         let batch = Array(pendingPayments.prefix(batchSize))
         
-        // CRITICAL FIX: Remove processed payments from queue immediately to prevent race conditions
+        // Remove processed payments from queue immediately to prevent race conditions
         if !batch.isEmpty {
             let batchIds = Set(batch.map { $0.correlationId })
             pendingPayments.removeAll { batchIds.contains($0.correlationId) }
@@ -116,39 +89,18 @@ actor PaymentService {
         await withTaskGroup(of: Void.self) { group in
             for request in batch {
                 group.addTask {
-                    await self.processPaymentUltraAggressive(request: request)
+                    await self.processPayment(request: request)
                 }
             }
         }
     }
     
-    // PHASE 2C: Process queue with proven settings (kept for reference)
-    private func processQueueProven() async {
-        guard !isProcessingQueue else { return }
-        isProcessingQueue = true
-        defer { isProcessingQueue = false }
-        
-        // Process in Phase 2C proven batch size
-        let batch = Array(pendingPayments.prefix(batchSize))
-        
-        await withTaskGroup(of: Void.self) { group in
-            for request in batch {
-                group.addTask {
-                    await self.processPaymentProven(request: request)
-                }
-            }
-        }
-    }
-    
-    // PHASE 3C: Ultra-aggressive payment processing for maximum volume
-    private func processPaymentUltraAggressive(request: PaymentProcessorRequest) async {
+    private func processPayment(request: PaymentProcessorRequest) async {
         let attempts = retryAttempts[request.correlationId] ?? 0
-        
-        // Try both processors with health-based preference
-        let processors: [ProcessorType] = await getOptimalProcessorOrder()
+        let processors = await getOptimalProcessorOrder()
         
         for processor in processors {
-            let success = await sendToProcessorUltraAggressive(request: request, processor: processor)
+            let success = await sendToProcessor(request: request, processor: processor)
             if success {
                 await recordProcessedPayment(request: request, processor: processor)
                 retryAttempts.removeValue(forKey: request.correlationId)
@@ -156,10 +108,9 @@ actor PaymentService {
             }
         }
         
-        // Phase 3C: Faster retry logic for maximum volume
+        // Retry logic
         if attempts < maxRetryAttempts {
             retryAttempts[request.correlationId] = attempts + 1
-            // Phase 3C: Reduced exponential backoff for faster processing
             let delay = min(UInt64(pow(2.0, Double(attempts))) * 500_000, 50_000_000) // Max 50ms
             try? await Task.sleep(nanoseconds: delay)
             
@@ -167,7 +118,7 @@ actor PaymentService {
             pendingPayments.append(request)
         } else {
             // Final attempt - force to fallback
-            let success = await sendToProcessorUltraAggressive(request: request, processor: .fallback)
+            let success = await sendToProcessor(request: request, processor: .fallback)
             if success {
                 await recordProcessedPayment(request: request, processor: .fallback)
             }
@@ -175,42 +126,7 @@ actor PaymentService {
         }
     }
     
-    // PHASE 2C: Proven payment processing (kept for reference)
-    private func processPaymentProven(request: PaymentProcessorRequest) async {
-        let attempts = retryAttempts[request.correlationId] ?? 0
-        
-        // Try both processors with health-based preference
-        let processors: [ProcessorType] = await getOptimalProcessorOrder()
-        
-        for processor in processors {
-            let success = await sendToProcessorProven(request: request, processor: processor)
-            if success {
-                await recordProcessedPayment(request: request, processor: processor)
-                pendingPayments.removeAll { $0.correlationId == request.correlationId }
-                retryAttempts.removeValue(forKey: request.correlationId)
-                return
-            }
-        }
-        
-        // Phase 2C proven retry logic
-        if attempts < maxRetryAttempts {
-            retryAttempts[request.correlationId] = attempts + 1
-            // Phase 2C proven exponential backoff
-            let delay = min(UInt64(pow(2.0, Double(attempts))) * 2_000_000, 100_000_000) // Max 100ms
-            try? await Task.sleep(nanoseconds: delay)
-        } else {
-            // Final attempt - force to fallback
-            let success = await sendToProcessorProven(request: request, processor: .fallback)
-            if success {
-                await recordProcessedPayment(request: request, processor: .fallback)
-            }
-            pendingPayments.removeAll { $0.correlationId == request.correlationId }
-            retryAttempts.removeValue(forKey: request.correlationId)
-        }
-    }
-    
-    // PHASE 3C: Ultra-aggressive processor communication with connection pooling
-    private func sendToProcessorUltraAggressive(request: PaymentProcessorRequest, processor: ProcessorType) async -> Bool {
+    private func sendToProcessor(request: PaymentProcessorRequest, processor: ProcessorType) async -> Bool {
         do {
             let url = processor == .default ? defaultProcessorURL : fallbackProcessorURL
             let uri = URI(string: "\(url)/payments")
@@ -221,7 +137,7 @@ actor PaymentService {
             let response = try await app.client.post(uri) { req in
                 try req.content.encode(request)
                 req.headers.replaceOrAdd(name: .contentType, value: "application/json; charset=utf-8")
-                req.headers.add(name: .connection, value: "keep-alive")  // Connection pooling
+                req.headers.add(name: .connection, value: "keep-alive")
                 req.headers.add(name: .accept, value: "application/json")
                 req.headers.add(name: .userAgent, value: "Swift-Vapor-Client")
                 print("📋 Content-Type: \(req.headers[.contentType])")
@@ -232,32 +148,11 @@ actor PaymentService {
             return success
         } catch {
             print("❌ Payment \(request.correlationId) to \(processor) failed: \(error)")
-            // Phase 3C: Fast failure detection
             await markProcessorUnhealthy(processor)
             return false
         }
     }
     
-    // PHASE 2C: Proven processor communication (kept for reference)
-    private func sendToProcessorProven(request: PaymentProcessorRequest, processor: ProcessorType) async -> Bool {
-        do {
-            let url = processor == .default ? defaultProcessorURL : fallbackProcessorURL
-            let uri = URI(string: "\(url)/payments")
-            
-            let response = try await app.client.post(uri) { req in
-                try req.content.encode(request)
-                req.headers.add(name: .contentType, value: "application/json")
-            }
-            
-            return response.status == .ok
-        } catch {
-            // Phase 2C proven failure detection
-            await markProcessorUnhealthy(processor)
-            return false
-        }
-    }
-    
-    // PHASE 2D: Optimized processor order based on health
     private func getOptimalProcessorOrder() async -> [ProcessorType] {
         let defaultHealthy = await isProcessorHealthy(.default)
         let fallbackHealthy = await isProcessorHealthy(.fallback)
@@ -274,7 +169,6 @@ actor PaymentService {
         }
     }
     
-    // PHASE 2D: Fast health checking
     private func isProcessorHealthy(_ processor: ProcessorType) async -> Bool {
         let now = Date()
         
@@ -283,14 +177,12 @@ actor PaymentService {
             return !lastCheck.health.failing
         }
         
-        // Quick health check
-        let health = await checkProcessorHealthFast(processor)
+        let health = await checkProcessorHealth(processor)
         lastHealthCheck[processor] = (date: now, health: health)
         return !health.failing
     }
     
-    // PHASE 2D: Ultra-fast health check
-    private func checkProcessorHealthFast(_ processor: ProcessorType) async -> HealthCheckResponse {
+    private func checkProcessorHealth(_ processor: ProcessorType) async -> HealthCheckResponse {
         do {
             let url = processor == .default ? defaultProcessorURL : fallbackProcessorURL
             let uri = URI(string: "\(url)/payments/service-health")
@@ -314,14 +206,13 @@ actor PaymentService {
             date: Date(),
             health: HealthCheckResponse(failing: true, minResponseTime: 9999)
         )
-        }
+    }
         
-    // PHASE 2D: Enhanced payment recording with consistency tracking
     private func recordProcessedPayment(request: PaymentProcessorRequest, processor: ProcessorType) async {
         let record = PaymentRecord(
             correlationId: request.correlationId,
             amount: request.amount,
-            requestedAt: Date(), // Use current time since we don't send this to processors
+            requestedAt: Date(),
             processor: processor,
             processedAt: Date()
         )
@@ -333,16 +224,11 @@ actor PaymentService {
             acceptedPayments[index].processedAt = Date()
         }
         
-        // Clean up retry tracking
         retryAttempts.removeValue(forKey: request.correlationId)
     }
 
-    // PHASE 2C: Summary with TRUE consistency - report only SENT payments
     func getPaymentsSummary(from: Date?, to: Date?) async -> PaymentSummaryResponse {
-        // CRITICAL FIX: Use PROCESSED payments (actually sent to processors)
-        // This matches exactly what payment processors received
-        // Accepter ≠ Enviado - só reportamos o que realmente enviamos
-        
+        // Use PROCESSED payments (actually sent to processors)
         let filteredPayments = processedPayments.filter { payment in
             if let from = from, payment.requestedAt < from {
                 return false
@@ -372,24 +258,22 @@ actor PaymentService {
         )
     }
     
-    // PHASE 2C: Final queue flush for zero inconsistency
     func flushQueueCompletely() async {
         var attempts = 0
         let maxFlushAttempts = 100
         
         while !pendingPayments.isEmpty && attempts < maxFlushAttempts {
-            await processQueueProven()
+            await processQueue()
             try? await Task.sleep(nanoseconds: 1_000_000) // 1ms
             attempts += 1
         }
     }
 
-    // PHASE 2D: Get processed payments for summary
     func getProcessedPayments() async -> [PaymentRecord] {
         return processedPayments
     }
 
-    // MARK: - Queue Statistics (for testing and debugging)
+    // MARK: - Queue Statistics
     
     func getQueueStats() async -> QueueStats {
         return QueueStats(
@@ -400,17 +284,15 @@ actor PaymentService {
         )
     }
     
-    // Get queue status for health monitoring
     func getQueueStatus() async -> String {
         let stats = await getQueueStats()
         return "Pending: \(stats.pending), Processed: \(stats.processed), Processing: \(stats.processing > 0 ? "YES" : "NO")"
     }
     
-    // PHASE 2C: Force queue flush for final consistency (emergency use)
     func forceCompleteQueueProcessing() async {
         var attempts = 0
-        while !pendingPayments.isEmpty && attempts < 100 { // Max 10 seconds
-            await processQueueProven()
+        while !pendingPayments.isEmpty && attempts < 100 {
+            await processQueue()
             try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
             attempts += 1
         }
