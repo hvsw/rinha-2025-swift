@@ -21,6 +21,9 @@ actor PaymentService {
     private let processingDelay: UInt64 = 500_000  // 0.5ms
     private let healthCheckInterval: TimeInterval = 5.0
     
+    // Reusable formatters to avoid expensive instantiation
+    private static let iso8601Formatter: ISO8601DateFormatter = ISO8601DateFormatter()
+    
     init(app: Application) {
         self.app = app
         self.defaultProcessorURL = Environment.get("DEFAULT_PROCESSOR_URL") ?? "http://payment-processor-default:8080"
@@ -38,7 +41,7 @@ actor PaymentService {
         let processorRequest = PaymentProcessorRequest(
             correlationId: request.correlationId,
             amount: request.amount,
-            requestedAt: ISO8601DateFormatter().string(from: Date())
+            requestedAt: Self.iso8601Formatter.string(from: Date())
         )
         
         // Track as accepted immediately when we return HTTP 202
