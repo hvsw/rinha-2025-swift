@@ -453,6 +453,9 @@ swift run
 swift test
 ```
 
+### Test Results & Environment Comparison
+- **[TESTE_LOCAL_VS_OFICIAL.md](docs/TESTE_LOCAL_VS_OFICIAL.md)** - Comparação detalhada entre execução local (macOS) e ambiente oficial (Linux ARM64)
+
 ## Docker Configuration
 
 The solution uses Docker Compose with:

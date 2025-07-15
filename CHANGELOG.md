@@ -2,6 +2,14 @@
 
 Registro técnico detalhado de todas as mudanças implementadas para otimização de performance.
 
+## [Teste Final] - 2025-01-21 - Comparação Local vs Oficial
+
+### 📊 Added
+- **TESTE_LOCAL_VS_OFICIAL.md**: Documentação completa comparando resultados locais vs oficiais
+  - Teste local (macOS→linux/amd64): 14,983 transações, P99 252.94ms, $149,070.9 total
+  - Teste oficial (Linux ARM64): 16,672 transações, P99 46.67ms, $106,126.70 total
+  - Análise das diferenças de ambiente e possíveis causas
+
 ## [Phase 3A] - 2024-12-XX - Nginx Ultra-Otimizado
 
 ### ✅ Added
