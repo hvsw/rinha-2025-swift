@@ -38,17 +38,20 @@ actor PaymentService {
     }
     
     func processPayment(request: PaymentRequest) async throws -> HTTPStatus {
+        // Use single timestamp for consistency between backend and processor
+        let requestedAt = Date()
+        
         let processorRequest = PaymentProcessorRequest(
             correlationId: request.correlationId,
             amount: request.amount,
-            requestedAt: Self.iso8601Formatter.string(from: Date())
+            requestedAt: Self.iso8601Formatter.string(from: requestedAt)
         )
         
         // Track as accepted immediately when we return HTTP 202
         let acceptedRecord = PaymentRecord(
             correlationId: request.correlationId,
             amount: request.amount,
-            requestedAt: Date(),
+            requestedAt: requestedAt,
             processor: .default,
             processedAt: nil
         )
@@ -212,19 +215,30 @@ actor PaymentService {
     }
         
     private func recordProcessedPayment(request: PaymentProcessorRequest, processor: ProcessorType) async {
+        let processedAt = Date()
+        
+        // Use original requestedAt timestamp from accepted payment record
+        let originalRequestedAt: Date
+        if let acceptedRecord = acceptedPayments.first(where: { $0.correlationId == request.correlationId }) {
+            originalRequestedAt = acceptedRecord.requestedAt
+        } else {
+            // Fallback - shouldn't happen in normal flow
+            originalRequestedAt = processedAt
+        }
+        
         let record = PaymentRecord(
             correlationId: request.correlationId,
             amount: request.amount,
-            requestedAt: Date(),
+            requestedAt: originalRequestedAt,
             processor: processor,
-            processedAt: Date()
+            processedAt: processedAt
         )
         processedPayments.append(record)
         
         // Update the accepted payment record with actual processor used
         if let index = acceptedPayments.firstIndex(where: { $0.correlationId == request.correlationId }) {
             acceptedPayments[index].processor = processor
-            acceptedPayments[index].processedAt = Date()
+            acceptedPayments[index].processedAt = processedAt
         }
         
         retryAttempts.removeValue(forKey: request.correlationId)
