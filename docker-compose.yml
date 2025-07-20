@@ -8,11 +8,27 @@ services:
     depends_on:
       - api01
       - api02
+    ulimits:
+      nproc: 1000000
+      nofile:
+        soft: 1000000
+        hard: 1000000
     deploy:
       resources:
         limits:
           cpus: '0.1'
           memory: 30M
+    networks:
+      - rinha-network
+
+  redis:
+    image: redis:7-alpine
+    command: redis-server --maxmemory 50m --maxmemory-policy allkeys-lru --save "" --appendonly no
+    deploy:
+      resources:
+        limits:
+          cpus: '0.2'
+          memory: 60M
     networks:
       - rinha-network
 
@@ -22,11 +38,19 @@ services:
       - ENVIRONMENT=production
       - DEFAULT_PROCESSOR_URL=http://payment-processor-default:8080
       - FALLBACK_PROCESSOR_URL=http://payment-processor-fallback:8080
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - redis
+    ulimits:
+      nproc: 1000000
+      nofile:
+        soft: 1000000
+        hard: 1000000
     deploy:
       resources:
         limits:
-          cpus: '0.7'
-          memory: 160M
+          cpus: '0.6'
+          memory: 130M
     networks:
       - rinha-network
       - payment-processor
@@ -37,11 +61,19 @@ services:
       - ENVIRONMENT=production
       - DEFAULT_PROCESSOR_URL=http://payment-processor-default:8080
       - FALLBACK_PROCESSOR_URL=http://payment-processor-fallback:8080
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - redis
+    ulimits:
+      nproc: 1000000
+      nofile:
+        soft: 1000000
+        hard: 1000000
     deploy:
       resources:
         limits:
-          cpus: '0.7'
-          memory: 160M
+          cpus: '0.6'
+          memory: 130M
     networks:
       - rinha-network
       - payment-processor

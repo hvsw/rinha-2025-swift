@@ -1,69 +1,162 @@
 #!/bin/bash
 
-echo "🧹 Iniciando limpeza completa do Docker..."
+echo "🧪 TESTE OFICIAL K6 - SWIFT/VAPOR"
+echo "================================="
 
-# Parar todos os containers
-docker stop $(docker ps -aq) 2>/dev/null || true
-
-# Remover todos os containers
-docker rm $(docker ps -aq) 2>/dev/null || true
-
-# Remover todas as imagens
-docker rmi $(docker images -q) 2>/dev/null || true
-
-# Limpar volumes
-docker volume prune -f
-
-# Limpar networks
-docker network prune -f
-
-# Limpar system completo
-docker system prune -af
-
-echo "✅ Limpeza Docker completa!"
-
-# Obter o diretório base do script (dentro do nosso repositório rinha-2025-swift)
+# Obter diretório base
 SCRIPT_DIR="$(dirname "$0")"
 BASE_DIR="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
-echo "🏗️  Subindo Payment Processors primeiro..."
+# Configurar MAX_REQUESTS 
+export MAX_REQUESTS=${MAX_REQUESTS:-550}
+echo "📊 MAX_REQUESTS configurado para: $MAX_REQUESTS"
 
-# Ir para o diretório dos Payment Processors no repositório oficial
+# Detectar arquitetura
+ARCH=$(uname -m)
+echo "🔍 Arquitetura detectada: $ARCH"
+
+# Escolher docker-compose correto para payment processors
+if [[ "$ARCH" == "arm64" ]]; then
+    PAYMENT_COMPOSE="docker-compose-arm64.yml"
+    echo "🍎 Usando payment processors ARM64 (Mac)"
+else
+    PAYMENT_COMPOSE="docker-compose.yml"
+    echo "🐧 Usando payment processors AMD64 (Linux)"
+fi
+
+echo ""
+echo "🧹 Limpeza completa do Docker..."
+
+# Limpeza completa para garantir ambiente limpo
+docker stop $(docker ps -aq) 2>/dev/null || true
+docker rm $(docker ps -aq) 2>/dev/null || true
+docker volume prune -f > /dev/null 2>&1
+docker network prune -f > /dev/null 2>&1
+
+echo "✅ Limpeza Docker completa!"
+
+echo ""
+echo "🚀 Subindo Payment Processors ($PAYMENT_COMPOSE)..."
+
+# Subir payment processors primeiro
 cd "$BASE_DIR/../rinha-de-backend-2025/payment-processor"
+docker compose -f "$PAYMENT_COMPOSE" up -d
 
-# Subir payment processors usando o arquivo original
-docker-compose -f docker-compose-arm64.yml up -d
+echo ""
+echo "🚀 Subindo nosso backend Swift/Vapor..."
 
-echo "⏱️  Aguardando payment processors ficarem prontos..."
-sleep 15
-
-# Verificar se os payment processors estão funcionando
-echo "🔍 Verificando payment processors..."
-curl -f http://localhost:8001/payments/service-health && echo "✅ Default OK" || echo "❌ Default FAIL"
-curl -f http://localhost:8002/payments/service-health && echo "✅ Fallback OK" || echo "❌ Fallback FAIL"
-
-echo "🏗️  Subindo backend Swift..."
-
-# Ir para o diretório do nosso backend Swift
+# Subir nosso backend
 cd "$BASE_DIR"
+docker compose up -d
 
-# Construir e subir o backend Swift
-docker-compose build --no-cache
-docker-compose up -d
+echo ""
+echo "⏳ Aguardando serviços ficarem prontos..."
 
-echo "⏱️  Aguardando backend Swift ficar pronto..."
-sleep 15
+# Aguardar payment processors
+echo "Verificando Payment Processors..."
+for i in {1..30}; do
+    if curl -f -s http://localhost:8001/payments/service-health > /dev/null 2>&1 && \
+       curl -f -s http://localhost:8002/payments/service-health > /dev/null 2>&1; then
+        echo "✅ Payment Processors prontos!"
+        break
+    fi
+    echo "Tentativa $i/30 - aguardando processors..."
+    sleep 3
+done
 
-# Verificar se o backend está funcionando
-echo "🔍 Verificando backend Swift..."
-curl -f http://localhost:9999/health && echo "✅ Backend OK" || echo "❌ Backend FAIL"
+# Aguardar nossa API
+echo "Verificando nossa API..."
+for i in {1..30}; do
+    if curl -f -s http://localhost:9999/payments-summary > /dev/null 2>&1; then
+        echo "✅ API Swift/Vapor pronta!"
+        break
+    fi
+    echo "Tentativa $i/30 - aguardando API..."
+    sleep 2
+done
 
-echo "🎯 Executando teste oficial k6..."
+echo ""
+echo "🔍 Verificação final dos serviços:"
+echo "- Payment Processor Default (8001): $(curl -s -o /dev/null -w "%{http_code}" http://localhost:8001/payments/service-health)"
+echo "- Payment Processor Fallback (8002): $(curl -s -o /dev/null -w "%{http_code}" http://localhost:8002/payments/service-health)"  
+echo "- API Swift/Vapor (9999): $(curl -s -o /dev/null -w "%{http_code}" http://localhost:9999/payments-summary)"
 
-# Ir para o diretório de testes no repositório oficial
+# Verificar se todos os serviços estão funcionando
+DEFAULT_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8001/payments/service-health)
+FALLBACK_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8002/payments/service-health)
+API_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:9999/payments-summary)
+
+if [[ "$DEFAULT_STATUS" != "200" ]] || [[ "$FALLBACK_STATUS" != "200" ]] || [[ "$API_STATUS" != "200" ]]; then
+    echo ""
+    echo "❌ ERRO: Nem todos os serviços estão respondendo corretamente!"
+    echo "- Default: $DEFAULT_STATUS (esperado: 200)"
+    echo "- Fallback: $FALLBACK_STATUS (esperado: 200)"
+    echo "- API: $API_STATUS (esperado: 200)"
+    echo ""
+    echo "🔍 Verificando logs dos containers..."
+    echo "--- Payment Default ---"
+    docker logs payment-processor-default 2>&1 | tail -10
+    echo "--- Payment Fallback ---"
+    docker logs payment-processor-fallback 2>&1 | tail -10
+    echo "--- Parando containers e saindo ---"
+    
+    # Parar containers
+    cd "$BASE_DIR"
+    docker compose down
+    cd "$BASE_DIR/../rinha-de-backend-2025/payment-processor"
+    docker compose -f "$PAYMENT_COMPOSE" down
+    
+    exit 1
+fi
+
+echo ""
+echo "🎯 EXECUTANDO TESTE OFICIAL K6..."
+echo "================================="
+
+# Ir para o diretório de testes oficial
 cd "$BASE_DIR/../rinha-de-backend-2025/rinha-test"
 
-# Executar teste k6
-k6 run rinha.js
+# Configurar dashboard do K6 (opcional)
+export K6_WEB_DASHBOARD=false
+export K6_WEB_DASHBOARD_PORT=5665
+export K6_WEB_DASHBOARD_PERIOD=2s
+export K6_WEB_DASHBOARD_EXPORT="$BASE_DIR/results/report-official-$(date +%Y%m%d_%H%M%S).html"
 
-echo "✅ Teste oficial concluído!" 
+# Executar K6 oficial diretamente (SEM run-tests.sh)
+echo "Executando: k6 run -e MAX_REQUESTS=$MAX_REQUESTS rinha.js"
+echo ""
+
+k6 run -e MAX_REQUESTS=$MAX_REQUESTS rinha.js
+
+RESULT_CODE=$?
+
+echo ""
+echo "🎯 TESTE OFICIAL CONCLUÍDO!"
+echo "=========================="
+
+if [ $RESULT_CODE -eq 0 ]; then
+    echo "✅ Teste executado com sucesso!"
+else
+    echo "❌ Teste falhou com código: $RESULT_CODE"
+fi
+
+echo ""
+echo "📊 Resultado final da API:"
+curl -s "http://localhost:9999/payments-summary" | jq '.' || echo "Erro ao obter summary"
+
+echo ""
+echo "🧹 Parando containers..."
+
+# Parar nosso backend
+cd "$BASE_DIR"
+docker compose down
+
+# Parar payment processors  
+cd "$BASE_DIR/../rinha-de-backend-2025/payment-processor"
+docker compose -f "$PAYMENT_COMPOSE" down
+
+echo ""
+echo "✅ Teste oficial finalizado!"
+echo "📁 Relatório salvo em: $BASE_DIR/results/"
+
+exit $RESULT_CODE 

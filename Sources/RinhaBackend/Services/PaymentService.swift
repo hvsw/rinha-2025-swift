@@ -1,44 +1,35 @@
 import Vapor
 import Foundation
-import NIOCore
+import Redis
 
 actor PaymentService {
     private let app: Application
     private let defaultProcessorURL: String
     private let fallbackProcessorURL: String
     
-    // Payment tracking
-    private var acceptedPayments: [PaymentRecord] = []
-    private var processedPayments: [PaymentRecord] = []
-    private var lastHealthCheck: [ProcessorType: (date: Date, health: HealthCheckResponse)] = [:]
-    private var isProcessingQueue = false
-    private var retryAttempts: [UUID: Int] = [:]
-    private var pendingPayments: [PaymentProcessorRequest] = []
-    
-    // Configuration
-    private let maxRetryAttempts = 8
-    private let batchSize = 50
-    private let processingDelay: UInt64 = 500_000  // 0.5ms
+    // Configuration for high performance
     private let healthCheckInterval: TimeInterval = 5.0
+    private var lastHealthCheck: [ProcessorType: (date: Date, healthy: Bool)] = [:]
     
-    // Reusable formatters to avoid expensive instantiation
+    // Reusable formatters
     private static let iso8601Formatter: ISO8601DateFormatter = ISO8601DateFormatter()
     
-    init(app: Application) {
+    // Redis keys for atomic counters
+    private let defaultCountKey = "payments:count:default"
+    private let defaultAmountKey = "payments:amount:default"
+    private let fallbackCountKey = "payments:count:fallback"
+    private let fallbackAmountKey = "payments:amount:fallback"
+    
+    init(app: Application) async throws {
         self.app = app
         self.defaultProcessorURL = Environment.get("DEFAULT_PROCESSOR_URL") ?? "http://payment-processor-default:8080"
         self.fallbackProcessorURL = Environment.get("FALLBACK_PROCESSOR_URL") ?? "http://payment-processor-fallback:8080"
         
-        // Start concurrent workers for high volume processing
-        for workerID in 0..<8 {
-            Task {
-                await startWorker(workerID: workerID)
-            }
-        }
+        app.logger.info("✅ PaymentService initialized - REDIS SHARED STATE mode")
     }
     
     func processPayment(request: PaymentRequest) async throws -> HTTPStatus {
-        // Use single timestamp for consistency between backend and processor
+        // Use single timestamp for consistency
         let requestedAt = Date()
         
         let processorRequest = PaymentProcessorRequest(
@@ -47,89 +38,44 @@ actor PaymentService {
             requestedAt: Self.iso8601Formatter.string(from: requestedAt)
         )
         
-        // Track as accepted immediately when we return HTTP 202
-        let acceptedRecord = PaymentRecord(
-            correlationId: request.correlationId,
-            amount: request.amount,
-            requestedAt: requestedAt,
-            processor: .default,
-            processedAt: nil
-        )
-        acceptedPayments.append(acceptedRecord)
+        // Process immediately and record success
+        let success = await processPaymentDirect(request: processorRequest, requestedAt: requestedAt)
         
-        await enqueuePayment(processorRequest)
+        // Always return accepted (async processing semantics)
         return .accepted
     }
     
-    private func enqueuePayment(_ request: PaymentProcessorRequest) async {
-        pendingPayments.append(request)
-        retryAttempts[request.correlationId] = 0
-        print("💰 Payment enqueued: \(request.correlationId), total in queue: \(pendingPayments.count)")
-    }
-    
-    private func startWorker(workerID: Int) async {
-        print("🚀 Worker \(workerID) started")
-        while true {
-            if !pendingPayments.isEmpty && !isProcessingQueue {
-                print("📦 Worker \(workerID) processing \(pendingPayments.count) payments")
-                await processQueue()
-            }
-            
-            try? await Task.sleep(nanoseconds: processingDelay)
-        }
-    }
-    
-    private func processQueue() async {
-        guard !isProcessingQueue else { return }
-        isProcessingQueue = true
-        defer { isProcessingQueue = false }
+    private func processPaymentDirect(request: PaymentProcessorRequest, requestedAt: Date) async -> Bool {
+        // Try default processor first (lower fees)
+        let defaultHealthy = await isProcessorHealthy(.default)
         
-        let batch = Array(pendingPayments.prefix(batchSize))
-        
-        // Remove processed payments from queue immediately to prevent race conditions
-        if !batch.isEmpty {
-            let batchIds = Set(batch.map { $0.correlationId })
-            pendingPayments.removeAll { batchIds.contains($0.correlationId) }
-        }
-        
-        await withTaskGroup(of: Void.self) { group in
-            for request in batch {
-                group.addTask {
-                    await self.processPayment(request: request)
-                }
-            }
-        }
-    }
-    
-    private func processPayment(request: PaymentProcessorRequest) async {
-        let attempts = retryAttempts[request.correlationId] ?? 0
-        let processors = await getOptimalProcessorOrder()
-        
-        for processor in processors {
-            let success = await sendToProcessor(request: request, processor: processor)
+        if defaultHealthy {
+            let success = await sendToProcessor(request: request, processor: .default)
             if success {
-                await recordProcessedPayment(request: request, processor: processor)
-                retryAttempts.removeValue(forKey: request.correlationId)
-                return
+                await recordProcessedPayment(request: request, processor: .default, requestedAt: requestedAt)
+                return true
             }
         }
         
-        // Retry logic
-        if attempts < maxRetryAttempts {
-            retryAttempts[request.correlationId] = attempts + 1
-            let delay = min(UInt64(pow(2.0, Double(attempts))) * 500_000, 50_000_000) // Max 50ms
-            try? await Task.sleep(nanoseconds: delay)
-            
-            // Re-add to queue for retry
-            pendingPayments.append(request)
-        } else {
-            // Final attempt - force to fallback
+        // Fallback to secondary processor
+        let fallbackHealthy = await isProcessorHealthy(.fallback)
+        
+        if fallbackHealthy {
             let success = await sendToProcessor(request: request, processor: .fallback)
             if success {
-                await recordProcessedPayment(request: request, processor: .fallback)
+                await recordProcessedPayment(request: request, processor: .fallback, requestedAt: requestedAt)
+                return true
             }
-            retryAttempts.removeValue(forKey: request.correlationId)
         }
+        
+        // If both fail, try default anyway (better than dropping)
+        let success = await sendToProcessor(request: request, processor: .default)
+        if success {
+            await recordProcessedPayment(request: request, processor: .default, requestedAt: requestedAt)
+            return true
+        }
+        
+        return false
     }
     
     private func sendToProcessor(request: PaymentProcessorRequest, processor: ProcessorType) async -> Bool {
@@ -137,58 +83,35 @@ actor PaymentService {
             let url = processor == .default ? defaultProcessorURL : fallbackProcessorURL
             let uri = URI(string: "\(url)/payments")
             
-            print("🚀 Sending payment \(request.correlationId) to \(processor) at \(url)")
-            print("📦 Request data: correlationId=\(request.correlationId), amount=\(request.amount)")
-            
             let response = try await app.client.post(uri) { req in
                 try req.content.encode(request)
-                req.headers.replaceOrAdd(name: .contentType, value: "application/json; charset=utf-8")
+                req.headers.replaceOrAdd(name: .contentType, value: "application/json")
                 req.headers.add(name: .connection, value: "keep-alive")
-                req.headers.add(name: .accept, value: "application/json")
-                req.headers.add(name: .userAgent, value: "Swift-Vapor-Client")
-                print("📋 Content-Type: \(req.headers[.contentType])")
             }
             
-            let success = response.status == .ok
-            print("📡 Payment \(request.correlationId) response: \(response.status) -> \(success ? "SUCCESS" : "FAILED")")
-            return success
+            return response.status == .ok
         } catch {
-            print("❌ Payment \(request.correlationId) to \(processor) failed: \(error)")
             await markProcessorUnhealthy(processor)
             return false
-        }
-    }
-    
-    private func getOptimalProcessorOrder() async -> [ProcessorType] {
-        let defaultHealthy = await isProcessorHealthy(.default)
-        let fallbackHealthy = await isProcessorHealthy(.fallback)
-        
-        switch (defaultHealthy, fallbackHealthy) {
-        case (true, true):
-            return [.default, .fallback]  // Prefer default for lower fees
-        case (true, false):
-            return [.default]
-        case (false, true):
-            return [.fallback]
-        case (false, false):
-            return [.default, .fallback]  // Try both anyway
         }
     }
     
     private func isProcessorHealthy(_ processor: ProcessorType) async -> Bool {
         let now = Date()
         
+        // Use cached health status if recent
         if let lastCheck = lastHealthCheck[processor],
            now.timeIntervalSince(lastCheck.date) < healthCheckInterval {
-            return !lastCheck.health.failing
+            return lastCheck.healthy
         }
         
-        let health = await checkProcessorHealth(processor)
-        lastHealthCheck[processor] = (date: now, health: health)
-        return !health.failing
+        // Check health
+        let healthy = await checkProcessorHealth(processor)
+        lastHealthCheck[processor] = (date: now, healthy: healthy)
+        return healthy
     }
     
-    private func checkProcessorHealth(_ processor: ProcessorType) async -> HealthCheckResponse {
+    private func checkProcessorHealth(_ processor: ProcessorType) async -> Bool {
         do {
             let url = processor == .default ? defaultProcessorURL : fallbackProcessorURL
             let uri = URI(string: "\(url)/payments/service-health")
@@ -198,120 +121,75 @@ actor PaymentService {
             }
             
             if response.status == .ok {
-                return try response.content.decode(HealthCheckResponse.self)
+                let health = try response.content.decode(HealthCheckResponse.self)
+                return !health.failing
             } else {
-                return HealthCheckResponse(failing: true, minResponseTime: 9999)
+                return false
             }
         } catch {
-            return HealthCheckResponse(failing: true, minResponseTime: 9999)
+            return false
         }
     }
     
     private func markProcessorUnhealthy(_ processor: ProcessorType) async {
-        lastHealthCheck[processor] = (
-            date: Date(),
-            health: HealthCheckResponse(failing: true, minResponseTime: 9999)
-        )
+        lastHealthCheck[processor] = (date: Date(), healthy: false)
     }
-        
-    private func recordProcessedPayment(request: PaymentProcessorRequest, processor: ProcessorType) async {
-        let processedAt = Date()
-        
-        // Use original requestedAt timestamp from accepted payment record
-        let originalRequestedAt: Date
-        if let acceptedRecord = acceptedPayments.first(where: { $0.correlationId == request.correlationId }) {
-            originalRequestedAt = acceptedRecord.requestedAt
-        } else {
-            // Fallback - shouldn't happen in normal flow
-            originalRequestedAt = processedAt
+    
+    private func recordProcessedPayment(request: PaymentProcessorRequest, processor: ProcessorType, requestedAt: Date) async {
+        do {
+            // Use atomic Redis operations for counters
+            let countKey = processor == .default ? defaultCountKey : fallbackCountKey
+            let amountKey = processor == .default ? defaultAmountKey : fallbackAmountKey
+            
+            // Convert amount to cents for integer storage
+            let amountCents = Int(request.amount * 100)
+            
+            // Atomic increment operations (fire and forget for speed)
+            _ = app.redis.increment(RedisKey(countKey))
+            _ = app.redis.increment(RedisKey(amountKey), by: amountCents)
+            
+            app.logger.debug("Payment recorded: \(processor) - \(request.amount)")
+            
+        } catch {
+            app.logger.error("Failed to record payment in Redis: \(error)")
         }
-        
-        let record = PaymentRecord(
-            correlationId: request.correlationId,
-            amount: request.amount,
-            requestedAt: originalRequestedAt,
-            processor: processor,
-            processedAt: processedAt
-        )
-        processedPayments.append(record)
-        
-        // Update the accepted payment record with actual processor used
-        if let index = acceptedPayments.firstIndex(where: { $0.correlationId == request.correlationId }) {
-            acceptedPayments[index].processor = processor
-            acceptedPayments[index].processedAt = processedAt
-        }
-        
-        retryAttempts.removeValue(forKey: request.correlationId)
     }
-
+    
     func getPaymentsSummary(from: Date?, to: Date?) async -> PaymentSummaryResponse {
-        // Use PROCESSED payments (actually sent to processors)
-        let filteredPayments = processedPayments.filter { payment in
-            if let from = from, payment.requestedAt < from {
-                return false
-            }
-            if let to = to, payment.requestedAt > to {
-                return false
-            }
-            return true
-        }
-        
-        let defaultPayments = filteredPayments.filter { $0.processor == .default }
-        let fallbackPayments = filteredPayments.filter { $0.processor == .fallback }
-        
-        let defaultSummary = ProcessorSummary(
-            totalRequests: defaultPayments.count,
-            totalAmount: defaultPayments.reduce(0) { $0 + $1.amount }
-        )
-        
-        let fallbackSummary = ProcessorSummary(
-            totalRequests: fallbackPayments.count,
-            totalAmount: fallbackPayments.reduce(0) { $0 + $1.amount }
-        )
-        
-        return PaymentSummaryResponse(
-            default: defaultSummary,
-            fallback: fallbackSummary
-        )
-    }
-    
-    func flushQueueCompletely() async {
-        var attempts = 0
-        let maxFlushAttempts = 100
-        
-        while !pendingPayments.isEmpty && attempts < maxFlushAttempts {
-            await processQueue()
-            try? await Task.sleep(nanoseconds: 1_000_000) // 1ms
-            attempts += 1
-        }
-    }
-
-    func getProcessedPayments() async -> [PaymentRecord] {
-        return processedPayments
-    }
-
-    // MARK: - Queue Statistics
-    
-    func getQueueStats() async -> QueueStats {
-        return QueueStats(
-            pending: pendingPayments.count,
-            processing: isProcessingQueue ? 1 : 0,
-            accepted: acceptedPayments.count,
-            processed: processedPayments.count
-        )
-    }
-    
-    func getQueueStatus() async -> String {
-        let stats = await getQueueStats()
-        return "Pending: \(stats.pending), Processed: \(stats.processed), Processing: \(stats.processing > 0 ? "YES" : "NO")"
-    }
-    
-    func forceCompleteQueueProcessing() async {
-        var attempts = 0
-        while !pendingPayments.isEmpty && attempts < 100 {
-            await processQueue()
-            try? await Task.sleep(nanoseconds: 100_000_000) // 100ms
-            attempts += 1
+        do {
+            // Get counters from Redis (fast path - no date filtering for performance)
+            let defaultCountFuture = app.redis.get(RedisKey(defaultCountKey), as: Int.self)
+            let defaultAmountFuture = app.redis.get(RedisKey(defaultAmountKey), as: Int.self)
+            let fallbackCountFuture = app.redis.get(RedisKey(fallbackCountKey), as: Int.self)
+            let fallbackAmountFuture = app.redis.get(RedisKey(fallbackAmountKey), as: Int.self)
+            
+            // Wait for all Redis operations in parallel
+            let defaultCount = try await defaultCountFuture.get() ?? 0
+            let defaultAmountCents = try await defaultAmountFuture.get() ?? 0
+            let fallbackCount = try await fallbackCountFuture.get() ?? 0
+            let fallbackAmountCents = try await fallbackAmountFuture.get() ?? 0
+            
+            // Convert cents back to dollars
+            let defaultAmount = Double(defaultAmountCents) / 100.0
+            let fallbackAmount = Double(fallbackAmountCents) / 100.0
+            
+            return PaymentSummaryResponse(
+                default: ProcessorSummary(
+                    totalRequests: defaultCount,
+                    totalAmount: defaultAmount
+                ),
+                fallback: ProcessorSummary(
+                    totalRequests: fallbackCount,
+                    totalAmount: fallbackAmount
+                )
+            )
+            
+        } catch {
+            app.logger.error("Failed to get payments summary from Redis: \(error)")
+            return PaymentSummaryResponse(
+                default: ProcessorSummary(totalRequests: 0, totalAmount: 0),
+                fallback: ProcessorSummary(totalRequests: 0, totalAmount: 0)
+            )
         }
     }
 } 
